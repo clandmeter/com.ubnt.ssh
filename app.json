@@ -1,0 +1,98 @@
+{
+	"id": "com.ubnt.ssh",
+	"name": {
+		"en": "Ubiquiti SSH devices"
+	},
+	"version": "0.0.1",
+	"compatibility": ">=1.0.0",
+	"author": {
+		"name": "Carlo Landmeter",
+		"email": "clandmeter@gmail.com"
+	},
+	"category": [
+		"security"
+	],
+	"capabilities": {
+		"client_connected": {
+			"type": "boolean",
+			"title": {
+				"en": "Connected"
+			},
+			"getable": true,
+			"setable": false
+		},
+		"measure_signal": {
+			"type": "number",
+			"title": {
+				"en": "Signal"
+			},
+			"units": {
+				"en": "%"
+			},
+			"getable": true,
+			"setable": false,
+			"min": 0,
+			"max": 100,
+			"step": 1
+		},
+		"measure_rssi": {
+			"type": "number",
+			"title": {
+				"en": "RSSI"
+			},
+			"units": {
+				"en": "dBm"
+			},
+			"getable": true,
+			"setable": false,
+			"min": -100,
+			"max": 0,
+			"step": 1
+		}
+	},
+	"drivers": [
+		{
+			"id": "ssh-client",
+			"name": {
+				"en": "Ubiquiti SSH device"
+			},
+			"class": "sensor",
+			"capabilities": [ "client_connected", "measure_signal",  "measure_rssi" ],
+			"mobile": {
+				"components": [
+					{
+						"id": "icon"
+					},
+					{
+						"id": "sensor",
+						"capabilities": [ "client_connected",  "measure_signal", "measure_rssi" ],
+						"options": {
+							"icons": {
+								"client_connected": "assets/connected.svg",
+								"measure_signal": "assets/signal.svg",
+								"measure_rssi": "assets/rssi.svg"
+							},
+							"client_connected": {
+								"noblink": false,
+								"invert": true
+							}
+						}
+					}
+				]
+			},
+			"pair": [
+				{
+					"id": "list_network_devices",
+					"template": "list_devices",
+					"navigation": {
+						"next": "add_network_device"
+					}
+				},
+				{
+					"id": "add_network_device",
+					"template": "add_devices"
+				}
+			]
+		}
+	]
+}

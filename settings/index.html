@@ -1,0 +1,74 @@
+<!doctype html>
+<html>
+<head>
+	<script type="text/javascript" src="/manager/webserver/assets/js/jquery.js"></script>
+</head>
+<body>
+	<h1>Ubiquiti SSH devices</h1>
+	<p>This application allows direct access to your Ubiquiti device without the need of the Unifi controller to be installed</p>
+	<p>You can use the same username/password combination as used in the Ubiquiti mobile application.</p>
+	<fieldset>
+		<legend>Accespoint SSH Settings</legend>
+		<div class="field row">
+			<label for="hostname">Hostname</label>
+			<input id="hostname" type="text" value="" />
+			<p style="margin-top: 5px; font-size: 0.8em">The hostname/ip address of your Uniquiti device.</p>
+		</div>
+
+		<div class="field row">
+			<label for="username">Username</label>
+			<input id="username" type="text" value="" />
+			<p style="margin-top: 5px; font-size: 0.8em">The username of your Ubiquiti device (default is ubnt).</p>
+		</div>
+
+		<div class="field row">
+			<label for="password">Password</label>
+			<input id="password" type="text" value="" />
+			<p style="margin-top: 5px; font-size: 0.8em">The password of your Ubiquiti device (default is ubnt).</p>
+		</div>
+		<div class="field row">
+			<label for="polltimer">Poll intervall</label>
+			<select id="polltimer"></select>
+			<p style="margin-top: 5px; font-size: 0.8em">The amount of time in minutes between device queries.</p>
+		</div>
+	</fieldset>
+	<button class="right" onclick="save()">Save changes</button>
+</body>
+</html>
+
+<script type="text/javascript">
+
+	function onHomeyReady(){
+		Homey.get('hostname', function(err, data) {
+			document.getElementById('hostname').value = data;
+		});
+		Homey.get('username', function(err, data) {
+			document.getElementById('username').value = data;
+		});
+		Homey.get('password', function(err, data) {
+			document.getElementById('password').value = data;
+		});
+		Homey.get('polltimer', function(err, data) {
+			for (i = 1; i < 100; i++) {
+				if (data == i) {
+					$("#polltimer").append(`<option value="${i}" selected>${i} min</option>`);
+				} else {
+					$("#polltimer").append(`<option value="${i}">${i} min</option>`);
+				}
+			}
+		});
+
+		Homey.ready();
+	}
+
+	function save() {
+		Homey.set('hostname', document.getElementById('hostname').value);
+		Homey.set('username', document.getElementById('username').value);
+		Homey.set('password', document.getElementById('password').value);
+		Homey.set('polltimer', document.getElementById('polltimer').value);
+		Homey.get(function(err, settings){
+			if(err) return console.error('Could not get all settings', err);
+			console.log('all settings', settings);
+		});
+	}
+</script>
