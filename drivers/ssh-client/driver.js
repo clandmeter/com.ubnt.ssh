@@ -5,8 +5,8 @@ const Client = require('ssh2').Client;
 const devices = {};
 // Signal difference to trigger device update
 const signalDiff = 2;
-// available connection settings
-const connSettings = ['hostname', 'username', 'password', 'polltimer'];
+// settings object or false when settings are incomplete.
+let settings = false;
 // list of currently found devices
 let clients = {};
 // ssh poll timer in minutes
@@ -14,33 +14,44 @@ let clientPoller = {};
 
 // this method will be run when the app starts.
 module.exports.init = (devicesData, callback) => {
+	loadSettings();
 	devicesData.forEach(initDevice);
 	Homey.manager('settings').on('set', settingsSaved);
-	if (Object.keys(devices).length > 0 && checkSettings(connSettings)) {
+	// initialize clients and start the clients poller.
+	if (Object.keys(devices).length > 0 && settings) {
 		getClients();
+		setClientPoller();
 	}
-	setClientPoller();
 	callback();
 };
 
 // this method will be run when a device are added.
 module.exports.added = (deviceData, callback) => {
 	initDevice(deviceData);
+	// if this is the first device, start the poller.
+	if (Object.keys(devices).length === 1 && settings) {
+		setClientPoller();
+	}
 	callback(null, true);
 };
 
-// this method will be run when a drive is removed.
+// this method will be run when a device is removed.
 module.exports.deleted = (deviceData) => {
 	console.log('Deleting device:', deviceData.id);
 	clearInterval(devices[deviceData.id].pollInterval);
+	clearInterval(clientPoller);
 	delete devices[deviceData.id];
+	if (Object.keys(devices).length === 0) {
+		console.log('No more devices left, removing client poller.')
+		clearInterval(clientPoller);
+	}
 };
 
 // this method will be run when starting to pair.
 module.exports.pair = (socket) => {
 	let json = '';
 	socket.on('list_devices', (data, callback) => {
-		if (checkSettings(connSettings)) {
+		if (settings) {
 			const conn = new Client();
 			conn.on('ready', () => {
 				conn.exec('mca-dump', (err, stream) => {
@@ -58,9 +69,9 @@ module.exports.pair = (socket) => {
 				});
 			});
 			conn.connect({
-				host: Homey.manager('settings').get('hostname'),
-				username: Homey.manager('settings').get('username'),
-				password: Homey.manager('settings').get('password'),
+				host: settings.hostname,
+				username: settings.username,
+				password: settings.password,
 			});
 			conn.on('error', (error) => {
 				console.error('Failed to connect to ssh server:', error);
@@ -130,9 +141,9 @@ function getClients() {
 		});
 	});
 	conn.connect({
-		host: Homey.manager('settings').get('hostname'),
-		username: Homey.manager('settings').get('username'),
-		password: Homey.manager('settings').get('password'),
+		host: settings.hostname,
+		username: settings.username,
+		password: settings.password,
 	});
 	conn.on('error', (error) => {
 		console.error('Failed to connect to ssh server:', error);
@@ -240,34 +251,29 @@ function compareInt(a, b, diff) {
 // create or new or update and existing client poller.
 function setClientPoller() {
 	console.log('Setting a new client poller');
-	let pollTimer = Homey.manager('settings').get('polltimer');
-	if (parseInt(pollTimer)) {
-		clearInterval(clientPoller);
-		clientPoller = setInterval(() => {
-			if (Object.keys(devices).length > 0 && checkSettings(connSettings)) {
-				getClients();
-			}
-		}, (pollTimer * 60 * 1000));
-	}
+	clearInterval(clientPoller);
+	clientPoller = setInterval(() => {
+		getClients();
+	}, (settings.polltime * 60 * 1000));
 }
 
 // check for updated settings and do some logic.
 function settingsSaved(name) {
 	console.log('Settings updated by user');
-	if (name === 'polltimer') {
+	loadSettings();
+	if (Object.keys(devices).length > 0 && settings) {
 		setClientPoller();
 	}
 }
 
-// checks an array of setting names to check if they are set
-function checkSettings(settings) {
+function loadSettings() {
 	let error = false;
-	settings.forEach((setting) => {
-		let value = Homey.manager('settings').get(setting);
-		if (!value || 0 === value.length) {
-			console.log(`Setting ${setting} is not set.`)
+	let conn = Homey.manager('settings').get('connection');
+	for (const key in conn) {
+		if (!conn[key] || 0 === conn[key].length) {
+			console.log(`Setting ${key} is not set.`)
 			error = true;
 		}
-	});
-	return (error) ? false : true;
+	}
+	settings = (error) ? false : conn;
 }
