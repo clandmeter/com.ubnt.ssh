@@ -94,5 +94,57 @@
 				}
 			]
 		}
-	]
+	],
+	"flow": {
+		"triggers": [
+			{
+				"id": "client_connected",
+				"title": {
+					"en": "Client connected",
+					"nl": "Client Verbonden"
+				},
+				"args": [
+					{
+						"name": "device",
+						"type": "device",
+						"filter": "driver_id=ssh-client"
+					}
+				],
+				"tokens": [
+					{
+						"name": "measure_rssi",
+						"type": "number",
+						"title": {
+							"en": "dBm",
+							"nl": "dBm"
+						},
+						"example": -75
+					},
+					{
+						"name": "measure_signal",
+						"type": "number",
+						"title": {
+							"en": "%",
+							"nl": "%"
+						},
+						"example": 75
+					}
+				]
+			},
+			{
+				"id": "client_disconnected",
+				"title": {
+					"en": "Client disconnected",
+					"nl": "Client verbroken"
+				},
+				"args": [
+					{
+						"name": "device",
+						"type": "device",
+						"filter": "driver_id=ssh-client"
+					}
+				]
+			}
+		]
+	}
 }

@@ -1,4 +1,7 @@
 {
   "extends": "athom",
-  'new-cap': { newIsCap: false },
+  "rules": {
+  	"no-unneeded-ternary": "off",
+  	"radix": "off"
+  }
 }

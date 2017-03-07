@@ -3,8 +3,6 @@
 const Client = require('ssh2').Client;
 // list if currently configured devices
 const devices = {};
-// Signal difference to trigger device update
-const signalDiff = 2;
 // settings object or false when settings are incomplete.
 let settings = false;
 // list of currently found devices
@@ -12,9 +10,11 @@ let clients = {};
 // ssh poll timer in minutes
 let clientPoller = {};
 
-// this method will be run when the app starts.
+/*
+ * This method will be run when the app starts.
+ */
 module.exports.init = (devicesData, callback) => {
-	loadSettings();
+	getSettings();
 	devicesData.forEach(initDevice);
 	Homey.manager('settings').on('set', settingsSaved);
 	// initialize clients and start the clients poller.
@@ -25,7 +25,9 @@ module.exports.init = (devicesData, callback) => {
 	callback();
 };
 
-// this method will be run when a device are added.
+/*
+ * This method will be run when a device are added.
+ */
 module.exports.added = (deviceData, callback) => {
 	initDevice(deviceData);
 	// if this is the first device, start the poller.
@@ -35,49 +37,33 @@ module.exports.added = (deviceData, callback) => {
 	callback(null, true);
 };
 
-// this method will be run when a device is removed.
+/*
+ * This method will be run when a device is removed.
+ */
 module.exports.deleted = (deviceData) => {
 	console.log('Deleting device:', deviceData.id);
 	clearInterval(devices[deviceData.id].pollInterval);
 	clearInterval(clientPoller);
 	delete devices[deviceData.id];
 	if (Object.keys(devices).length === 0) {
-		console.log('No more devices left, removing client poller.')
+		console.log('No more devices left, removing client poller.');
 		clearInterval(clientPoller);
 	}
 };
 
-// this method will be run when starting to pair.
+/*
+ * This method will be run when starting to pair.
+ */
 module.exports.pair = (socket) => {
-	let json = '';
 	socket.on('list_devices', (data, callback) => {
 		if (settings) {
-			const conn = new Client();
-			conn.on('ready', () => {
-				conn.exec('mca-dump', (err, stream) => {
-					if (err) console.error(err);
-					stream.on('close', () => {
-						conn.end();
-						let obj = formatClients(json);
-						let deviceData = Object.keys(obj).map((key) => { return obj[key]; });
-						callback(null, deviceData);
-					}).on('data', (jsonData) => {
-						json += jsonData.toString();
-					}).stderr.on('data', (error) => {
-						Homey.log(`STDERR: ${error}`);
-					});
-				});
-			});
-			conn.connect({
-				host: settings.hostname,
-				username: settings.username,
-				password: settings.password,
-			});
-			conn.on('error', (error) => {
-				console.error('Failed to connect to ssh server:', error);
+			getJson().then(json => {
+				const result = parseJson(json);
+				const listDevices = getListDevices(result);
+				callback(null, listDevices);
 			});
 		} else {
-			callback('Cannot connect to Ubiquiti device, please check settings!', null);
+			callback('Connection settings are not correct, please check settings page!', null);
 		}
 	});
 	socket.on('disconnect', () => {
@@ -85,7 +71,9 @@ module.exports.pair = (socket) => {
 	});
 };
 
-// this defines our apps capabilities.
+/*
+ * This defines our apps capabilities.
+ */
 Homey.manifest.drivers[0].capabilities.forEach(capability => {
 	module.exports.capabilities = {};
 	module.exports.capabilities[capability] = {};
@@ -121,114 +109,105 @@ function initDevice(deviceData) {
 	}
 }
 
-// create an ssh connection and get AP config
-function getClients() {
-	const conn = new Client();
-	let json = '';
-	console.log('Gettting clients...');
-	conn.on('ready', () => {
-		conn.exec('mca-dump', (err, stream) => {
-			if (err) console.error(err);
-			stream.on('close', () => {
-				conn.end();
-				clients = formatClients(json);
-				console.log(`Found ${Object.keys(clients).length} client(s).`);
-			}).on('data', (jsonData) => {
-				json += jsonData.toString();
-			}).stderr.on('data', (error) => {
-				Homey.log(`STDERR: ${error}`);
-			});
-		});
-	});
-	conn.connect({
-		host: settings.hostname,
-		username: settings.username,
-		password: settings.password,
-	});
-	conn.on('error', (error) => {
-		console.error('Failed to connect to ssh server:', error);
-	});
-}
-
-// convert json to clients object
-function formatClients(json, array) {
-	const result = {};
-	try {
-		let data = JSON.parse(json);
-		data.vap_table.forEach((radio) => {
-			radio.sta_table.forEach((client) => {
-				if (client.authorized) {
-					let hostname = (client.hasOwnProperty('hostname')) ? client.hostname : client.mac;
-					result[client.mac] = {
-						name: (client.hasOwnProperty('hostname')) ? client.hostname : client.mac,
-						data: {
-							id: client.mac,
-						},
-						meta: {
-							rssi: client.rssi,
-						},
-					}
-				}
-			});
-		});
-		return (array) ? Object.keys(result).map((key) => { return result[key]; }) : result;
-	} catch (e) {
-		Homey.log(`Invalid JSON in mca-dump [ ${e.toString()} ]`);
-	}
-}
-
-// update status of specific device
+/*
+ * update our device and related tasks
+ */
 function updateDevice(deviceData) {
+	triggerDeviceFlow(deviceData);
+	updateDeviceRealtime(deviceData);
+	updateDeviceState(deviceData);
+}
+
+/*
+ * Trigger device flow when clients connects or
+ * disconnects but ignore when just initalized (null)
+ */
+function triggerDeviceFlow(deviceData) {
 	const device = getDeviceByData(deviceData);
-	const client = clients[deviceData.id];
+	const client = getClientByData(deviceData);
+	// client was disconnected but came online
+	if (client && device.state.client_connected === false) {
+		console.log(`Device ${deviceData.id} is connected.`);
+		const tokens = formatMetadata(deviceData);
+		Homey.manager('flow').triggerDevice('client_connected', tokens, null, deviceData,
+			(err) => {
+				if (err) return Homey.error(err);
+			}
+        );
+	}
+	// client was connected but went offline.
+	if (!client && device.state.client_connected === true) {
+		console.log(`Device ${deviceData.id} is disconnected.`);
+		Homey.manager('flow').triggerDevice('client_disconnected', null, null, deviceData,
+			(err) => {
+				if (err) return Homey.error(err);
+			}
+		);
+	}
+}
+
+/*
+ * Notify homey off device updates
+ */
+function updateDeviceRealtime(deviceData) {
+	const client = getClientByData(deviceData);
+	const device = getDeviceByData(deviceData);
+	const connected = (client) ? true : false;
+	const meta = formatMetadata(deviceData);
+	if (device.state.client_connected !== connected) {
+		console.log(`Updating: ${deviceData.id} status to: ${connected}`);
+		module.exports.realtime(deviceData, 'client_connected', connected);
+	}
+	if (device.state.measure_signal !== meta.measure_signal) {
+		console.log(`Updating: ${deviceData.id} measure_signal to: ${meta.measure_signal}`);
+		module.exports.realtime(deviceData, 'measure_signal', meta.measure_signal);
+	}
+	if (device.state.measure_rssi !== meta.measure_rssi) {
+		console.log(`Updating: ${deviceData.id} measure_rssi to: ${meta.measure_rssi}`);
+		module.exports.realtime(deviceData, 'measure_rssi', meta.measure_rssi);
+	}
+}
+
+/*
+ * Update our internal device state object
+ */
+function updateDeviceState(deviceData) {
+	const client = getClientByData(deviceData);
 	if (client) {
-		// Client found in client list, enable it if not already.
-		if (device.state.client_connected !== true) {
-			console.log(`Client ${deviceData.id} connected.`);
-			device.state.client_connected = true;
-			module.exports.realtime(deviceData, 'client_connected', true);
-		}
-		// only update when rssi has a difference bigger then 2
-		if (compareInt(device.state.measure_rssi, client.meta.rssi, signalDiff)) {
-			console.log(`Client ${deviceData.id} RSSI updated.`);
-			device.state.measure_signal = client.meta.signal;
-			module.exports.realtime(deviceData, 'measure_signal', formatDeviceData('signal', client.meta.rssi));
-			device.state.measure_rssi = client.meta.rssi;
-			module.exports.realtime(deviceData, 'measure_rssi', formatDeviceData('rssi', client.meta.rssi));
-		}
+		const meta = formatMetadata(deviceData);
+		devices[deviceData.id].state = {
+			client_connected: true,
+			measure_signal: meta.measure_signal,
+			measure_rssi: meta.measure_rssi,
+		};
 	} else {
-		if (device.state.client_connected !== false) {
-			console.log(`Client ${deviceData.id} disconnected.`);
-			device.state.client_connected = false;
-			module.exports.realtime(deviceData, 'client_connected', false);
-			device.state.measure_signal = null;
-			module.exports.realtime(deviceData, 'measure_signal', null);
-			device.state.measure_rssi = null;
-			module.exports.realtime(deviceData, 'measure_rssi', null);
-		}
+		devices[deviceData.id].state = {
+			client_connected: false,
+			measure_signal: null,
+			measure_rssi: null,
+		};
 	}
 }
 
-// gracefully borrowed from com.ubnt.unifi app
-function formatDeviceData(type, value) {
-	switch (type) {
-		case 'signal':
-			return parseInt((Math.min(45, Math.max(parseFloat(value), 5)) - 5) / 40 * 99);
-		case 'rssi':
-			return parseInt(parseFloat(value) - 95);
+/*
+ * Gracefully borrowed from com.ubnt.unifi
+ * This converts our signal and rssi to usefull values
+ */
+function formatMetadata(deviceData) {
+	const client = getClientByData(deviceData);
+	let result = { measure_signal: null, measure_rssi: null };
+	if (client) {
+		result = {
+			measure_signal: parseInt((Math.min(45, Math.max(parseFloat(client.rssi), 5)) - 5) / 40 * 99),
+			measure_rssi: parseInt(parseFloat(client.rssi) - 95),
+		};
 	}
+	return result;
 }
 
-// get client from client list by id(mac)
-function findClient(id) {
-	for (const key in clients) {
-		if (clients[key].data.id === id) {
-			return clients[key];
-		}
-	}
-}
-
-// get device from devices list by id(mac)
+/*
+ * Get device by device data
+ */
 function getDeviceByData(deviceData) {
 	const device = devices[deviceData.id];
 	if (typeof device === 'undefined') {
@@ -237,7 +216,17 @@ function getDeviceByData(deviceData) {
 	return device;
 }
 
-// check if integer difference is higher then diff.
+/*
+ * Get client by devicedata.
+ */
+function getClientByData(deviceData) {
+	const client = clients[deviceData.id];
+	return (typeof client === 'undefined') ? false : client;
+}
+
+/*
+ * Check if integer difference is higher then diff.
+ */
 function compareInt(a, b, diff) {
 	if (parseInt(a) && parseInt(b)) {
 		if (Math.abs(a - b) > diff) {
@@ -248,7 +237,9 @@ function compareInt(a, b, diff) {
 	}
 }
 
-// create or new or update and existing client poller.
+/*
+ * Create a new or update an exiting client poller
+ */
 function setClientPoller() {
 	console.log('Setting a new client poller');
 	clearInterval(clientPoller);
@@ -257,23 +248,123 @@ function setClientPoller() {
 	}, (settings.polltime * 60 * 1000));
 }
 
-// check for updated settings and do some logic.
+/*
+ * Check if settings have been updated
+ * if updated we set our client poller
+ */
 function settingsSaved(name) {
 	console.log('Settings updated by user');
-	loadSettings();
+	getSettings();
 	if (Object.keys(devices).length > 0 && settings) {
 		setClientPoller();
 	}
 }
 
-function loadSettings() {
+/*
+ * Get our settings from homey and check if they are set
+ */
+function getSettings() {
 	let error = false;
-	let conn = Homey.manager('settings').get('connection');
+	const conn = Homey.manager('settings').get('connection');
 	for (const key in conn) {
-		if (!conn[key] || 0 === conn[key].length) {
-			console.log(`Setting ${key} is not set.`)
+		if (!conn[key] || conn[key].length === 0) {
+			console.log(`Setting ${key} is not set.`);
 			error = true;
 		}
 	}
 	settings = (error) ? false : conn;
+}
+
+/*
+ * Create a promise and execute an remote ssh command
+ */
+function getJson() {
+	return new Promise((resolve, reject) => {
+		const conn = new Client();
+		let json = '';
+		console.log('Gettting clients...');
+		conn.on('ready', () => {
+			conn.exec('mca-dump', (err, stream) => {
+				if (err) throw err;
+				stream.on('close', () => {
+					conn.end();
+					resolve(json);
+				});
+				stream.on('data', (jsonData) => {
+					json += jsonData.toString();
+				});
+				stream.stderr.on('data', (error) => {
+					reject(Error(error));
+				});
+			});
+		});
+		conn.connect({
+			host: settings.hostname,
+			username: settings.username,
+			password: settings.password,
+		});
+		conn.on('error', (error) => {
+			reject(Error(error));
+		});
+	});
+}
+
+/*
+ * Run the ssh promise and wait for the json data
+ */
+function getClients() {
+	getJson().then((json) => {
+		const data = parseJson(json);
+		clients = formatClients(data);
+		console.log(`Found ${Object.keys(clients).length} Clients.`);
+	});
+}
+
+/*
+ * Get all clients from ubiquiti json and put them
+ * in a mac addressed keyed object
+ */
+function formatClients(data) {
+	const result = {};
+	data.vap_table.forEach((vap) => {
+		vap.sta_table.forEach((sta) => {
+			if (sta.authorized) {
+				result[sta.mac] = sta;
+			}
+		});
+	});
+	return result;
+}
+
+/*
+ * Parse the ubiquiti generated json and return it
+ */
+function parseJson(json) {
+	let data = {};
+	try {
+		data = JSON.parse(json);
+	} catch (e) {
+		console.error(e);
+	}
+	return data;
+}
+
+/*
+ * Get a list of devices from Ubiquiti json data
+ * which is needed for pairing
+ */
+function getListDevices(data) {
+	const result = [];
+	data.vap_table.forEach((vap) => {
+		vap.sta_table.forEach((sta) => {
+			if (sta.authorized) {
+				result.push({
+					name: (sta.hasOwnProperty('hostname')) ? sta.hostname : sta.mac,
+					data: { id: sta.mac },
+					meta: { rssi: sta.rssi },
+				});
+			}
+		});
+	});
+	return result;
 }
