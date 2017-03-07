@@ -18,9 +18,9 @@ When you have setup your UniFi® device, you can start installing this applicati
 * **Poll Intervall** (The amount of time between device queries)
 
 When you provided the correct information you should be able to add devices via "Add a device" in Homey.
-Homey will query your UniFi® device and provide you a list with currently connected devices the choose from.
+Homey will query your UniFi® device and provide you a list with currently connected devices to choose from.
 
 ## Limitations
 
-* This app only supports a single AP because having more then one AP means more reason to install the controller software. Of course PR's are always welcome.
+* This app only supports a single device because having more then one AP means more reason to install the controller software. Of course PR's are always welcome.
 * You are only able to add devices/clients which are currently connected to your UniFi® device.
