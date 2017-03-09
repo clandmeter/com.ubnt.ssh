@@ -1,7 +1,7 @@
 {
 	"id": "com.ubnt.ssh",
 	"name": {
-		"en": "Ubiquiti SSH devices"
+		"en": "Ubiquiti UniFi"
 	},
 	"version": "0.0.1",
 	"compatibility": ">=1.0.0",
@@ -144,6 +144,30 @@
 						"filter": "driver_id=ssh-client"
 					}
 				]
+			},
+			{
+				"id": "first_online",
+				"title": {
+					"en": "First client connected"
+				}
+			},
+			{
+				"id": "last_offline",
+				"title": {
+					"en": "Last client disconnected"
+				}
+			},
+			{
+				"id": "client_online",
+				"title": {
+					"en": "A client connected"
+				}
+			},
+			{
+				"id": "client_offline",
+				"title": {
+					"en": "A client disconnected"
+				}
 			}
 		]
 	}

@@ -1,13 +1,14 @@
 'use strict';
 
 const Client = require('ssh2').Client;
+const fs = require('fs');
 // list if currently configured devices
 const devices = {};
 // settings object or false when settings are incomplete.
 let settings = false;
 // list of currently found devices
 let clients = {};
-// ssh poll timer in minutes
+// ssh client poller
 let clientPoller = {};
 
 /*
@@ -41,12 +42,12 @@ module.exports.added = (deviceData, callback) => {
  * This method will be run when a device is removed.
  */
 module.exports.deleted = (deviceData) => {
-	console.log('Deleting device:', deviceData.id);
+	_debug('Deleting device:', deviceData.id);
 	clearInterval(devices[deviceData.id].pollInterval);
 	clearInterval(clientPoller);
 	delete devices[deviceData.id];
 	if (Object.keys(devices).length === 0) {
-		console.log('No more devices left, removing client poller.');
+		_debug('No more devices left, removing client poller.');
 		clearInterval(clientPoller);
 	}
 };
@@ -67,7 +68,7 @@ module.exports.pair = (socket) => {
 		}
 	});
 	socket.on('disconnect', () => {
-		console.log('User aborted pairing, or pairing is finished');
+		_debug('User aborted pairing, or pairing is finished');
 	});
 };
 
@@ -89,7 +90,7 @@ Homey.manifest.drivers[0].capabilities.forEach(capability => {
 *  Initialize existing devices and start Interval.
 */
 function initDevice(deviceData) {
-	console.log('Initialize device:', deviceData.id);
+	_debug('Initialize device:', deviceData.id);
 	devices[deviceData.id] = {};
 	devices[deviceData.id].data = deviceData;
 	devices[deviceData.id].state = {
@@ -127,7 +128,7 @@ function triggerDeviceFlow(deviceData) {
 	const client = getClientByData(deviceData);
 	// client was disconnected but came online
 	if (client && device.state.client_connected === false) {
-		console.log(`Device ${deviceData.id} is connected.`);
+		_debug(`Device ${deviceData.id} is connected.`);
 		const tokens = formatMetadata(deviceData);
 		Homey.manager('flow').triggerDevice('client_connected', tokens, null, deviceData,
 			(err) => {
@@ -137,7 +138,7 @@ function triggerDeviceFlow(deviceData) {
 	}
 	// client was connected but went offline.
 	if (!client && device.state.client_connected === true) {
-		console.log(`Device ${deviceData.id} is disconnected.`);
+		_debug(`Device ${deviceData.id} is disconnected.`);
 		Homey.manager('flow').triggerDevice('client_disconnected', null, null, deviceData,
 			(err) => {
 				if (err) return Homey.error(err);
@@ -155,15 +156,15 @@ function updateDeviceRealtime(deviceData) {
 	const connected = (client) ? true : false;
 	const meta = formatMetadata(deviceData);
 	if (device.state.client_connected !== connected) {
-		console.log(`Updating: ${deviceData.id} status to: ${connected}`);
+		_debug(`Updating: ${deviceData.id} client_connected to: ${connected}`);
 		module.exports.realtime(deviceData, 'client_connected', connected);
 	}
 	if (device.state.measure_signal !== meta.measure_signal) {
-		console.log(`Updating: ${deviceData.id} measure_signal to: ${meta.measure_signal}`);
+		_debug(`Updating: ${deviceData.id} measure_signal to: ${meta.measure_signal}`);
 		module.exports.realtime(deviceData, 'measure_signal', meta.measure_signal);
 	}
 	if (device.state.measure_rssi !== meta.measure_rssi) {
-		console.log(`Updating: ${deviceData.id} measure_rssi to: ${meta.measure_rssi}`);
+		_debug(`Updating: ${deviceData.id} measure_rssi to: ${meta.measure_rssi}`);
 		module.exports.realtime(deviceData, 'measure_rssi', meta.measure_rssi);
 	}
 }
@@ -241,7 +242,7 @@ function compareInt(a, b, diff) {
  * Create a new or update an exiting client poller
  */
 function setClientPoller() {
-	console.log('Setting a new client poller');
+	_debug('Setting a new client poller');
 	clearInterval(clientPoller);
 	clientPoller = setInterval(() => {
 		getClients();
@@ -253,7 +254,7 @@ function setClientPoller() {
  * if updated we set our client poller
  */
 function settingsSaved(name) {
-	console.log('Settings updated by user');
+	_debug('Settings updated by user');
 	getSettings();
 	if (Object.keys(devices).length > 0 && settings) {
 		setClientPoller();
@@ -268,7 +269,7 @@ function getSettings() {
 	const conn = Homey.manager('settings').get('connection');
 	for (const key in conn) {
 		if (!conn[key] || conn[key].length === 0) {
-			console.log(`Setting ${key} is not set.`);
+			_debug(`Setting ${key} is not set.`);
 			error = true;
 		}
 	}
@@ -282,7 +283,7 @@ function getJson() {
 	return new Promise((resolve, reject) => {
 		const conn = new Client();
 		let json = '';
-		console.log('Gettting clients...');
+		_debug('Gettting clients...');
 		conn.on('ready', () => {
 			conn.exec('mca-dump', (err, stream) => {
 				if (err) throw err;
@@ -316,7 +317,8 @@ function getClients() {
 	getJson().then((json) => {
 		const data = parseJson(json);
 		clients = formatClients(data);
-		console.log(`Found ${Object.keys(clients).length} Clients.`);
+		_debug(`Found ${Object.keys(clients).length} Clients.`);
+		triggerFlows();
 	});
 }
 
@@ -367,4 +369,79 @@ function getListDevices(data) {
 		});
 	});
 	return result;
+}
+
+/*
+ * Get the amount of current online devices
+ */
+function getOnlineDevices() {
+	let num = 0;
+	Object.keys(devices).forEach(key => {
+		if (devices[key].state.client_connected) {
+			num++;
+		}
+	});
+	return num;
+}
+
+/*
+ * Get the amount of online clients which are paired devices
+ */
+function getOnlineClients() {
+	let num = 0;
+	Object.keys(clients).forEach(key => {
+		if (devices.hasOwnProperty(key)) {
+			num++;
+		}
+	});
+	return num;
+}
+
+function devicesInitialized() {
+	let status = true;
+	Object.keys(devices).forEach(key => {
+		if (devices[key].state.client_connected === null) {
+			status = false;
+		}
+	});
+	return status;
+}
+
+function triggerFlows() {
+	if (devicesInitialized()) {
+		_debug('Triggering flows...');
+		// check if first device comes online
+		if ((getOnlineDevices() === 0) && (getOnlineClients() > 0)) {
+			_debug('First client connected.');
+			Homey.manager('flow').trigger('first_online', null, null, (err, result) => {
+				if( err ) return Homey.error(err);
+			});
+		}
+		if ((getOnlineDevices > 0) && (getOnlineClients() === 0)) {
+			_debug('Last client disconnected.');
+			Homey.manager('flow').trigger('last_offline', null, null, (err, result) => {
+				if( err ) return Homey.error(err);
+			});
+		}
+		if (getOnlineClients() > getOnlineDevices()) {
+			_debug('A client connected.');
+			Homey.manager('flow').trigger('client_online', null, null, (err, result) => {
+				if( err ) return Homey.error(err);
+			});
+		}
+		if (getOnlineDevices() > getOnlineClients()) {
+			_debug('A client disconnected.');
+			Homey.manager('flow').trigger('client_offline', null, null, (err, result) => {
+				if( err ) return Homey.error(err);
+			});
+		}
+	}
+}
+
+function _debug() {
+	if (fs.existsSync('/debug')) {
+		const args = Array.prototype.slice.call(arguments);
+		args.unshift('[debug]:');
+		console.log.apply(null, args);
+	}
 }
