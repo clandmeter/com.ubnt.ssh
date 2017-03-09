@@ -62,6 +62,9 @@ module.exports.pair = (socket) => {
 				const result = parseJson(json);
 				const listDevices = getListDevices(result);
 				callback(null, listDevices);
+			}).catch(function(error) {
+				_debug('Failed to get a list of devices', error);
+				callback('Failed to get a list of devices.', null);
 			});
 		} else {
 			callback('Connection settings are not correct, please check settings page!', null);
@@ -319,6 +322,8 @@ function getClients() {
 		clients = formatClients(data);
 		_debug(`Found ${Object.keys(clients).length} Clients.`);
 		triggerFlows();
+	}).catch(function(error) {
+		_debug('Failed to get a list of clients', error);
 	});
 }
 
