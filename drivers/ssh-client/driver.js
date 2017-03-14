@@ -58,11 +58,11 @@ module.exports.deleted = (deviceData) => {
 module.exports.pair = (socket) => {
 	socket.on('list_devices', (data, callback) => {
 		if (settings) {
-			getJson().then(json => {
-				const result = parseJson(json);
-				const listDevices = getListDevices(result);
+			getJson().then(JSON.parse).then(responce => {
+				const listDevices = getListDevices(responce);
 				callback(null, listDevices);
-			}).catch(function(error) {
+			})
+			.catch(error => {
 				_debug('Failed to get a list of devices', error);
 				callback('Failed to get a list of devices.', null);
 			});
@@ -102,10 +102,6 @@ function initDevice(deviceData) {
 		measure_rssi: null,
 	};
 
-	devices[deviceData.id].pollInterval = setInterval(() => {
-		updateDevice(deviceData);
-	}, (10 * 1000));
-
 	for (const cap in devices[deviceData.id].state) {
 		if (Object.prototype.hasOwnProperty.call(devices[deviceData.id].state, cap)) {
 			module.exports.realtime(deviceData, cap, devices[deviceData.id].state[cap]);
@@ -116,7 +112,8 @@ function initDevice(deviceData) {
 /*
  * update our device and related tasks
  */
-function updateDevice(deviceData) {
+function updateDevice(id) {
+	const deviceData = { id: id };
 	triggerDeviceFlow(deviceData);
 	updateDeviceRealtime(deviceData);
 	updateDeviceState(deviceData);
@@ -229,19 +226,6 @@ function getClientByData(deviceData) {
 }
 
 /*
- * Check if integer difference is higher then diff.
- */
-function compareInt(a, b, diff) {
-	if (parseInt(a) && parseInt(b)) {
-		if (Math.abs(a - b) > diff) {
-			return true;
-		}
-	} else {
-		return true;
-	}
-}
-
-/*
  * Create a new or update an exiting client poller
  */
 function setClientPoller() {
@@ -317,13 +301,14 @@ function getJson() {
  * Run the ssh promise and wait for the json data
  */
 function getClients() {
-	getJson().then((json) => {
-		const data = parseJson(json);
-		clients = formatClients(data);
+	getJson().then(JSON.parse).then(responce => {
+		clients = formatClients(responce);
 		_debug(`Found ${Object.keys(clients).length} Clients.`);
 		triggerFlows();
-	}).catch(function(error) {
-		_debug('Failed to get a list of clients', error);
+		Object.keys(devices).forEach(updateDevice);
+	})
+	.catch(error => {
+		_debug('Failed to update devices', error);
 	});
 }
 
@@ -341,19 +326,6 @@ function formatClients(data) {
 		});
 	});
 	return result;
-}
-
-/*
- * Parse the ubiquiti generated json and return it
- */
-function parseJson(json) {
-	let data = {};
-	try {
-		data = JSON.parse(json);
-	} catch (e) {
-		console.error(e);
-	}
-	return data;
 }
 
 /*
@@ -419,25 +391,25 @@ function triggerFlows() {
 		if ((getOnlineDevices() === 0) && (getOnlineClients() > 0)) {
 			_debug('First client connected.');
 			Homey.manager('flow').trigger('first_online', null, null, (err, result) => {
-				if( err ) return Homey.error(err);
+				if (err) return Homey.error(err);
 			});
 		}
 		if ((getOnlineDevices > 0) && (getOnlineClients() === 0)) {
 			_debug('Last client disconnected.');
 			Homey.manager('flow').trigger('last_offline', null, null, (err, result) => {
-				if( err ) return Homey.error(err);
+				if (err) return Homey.error(err);
 			});
 		}
 		if (getOnlineClients() > getOnlineDevices()) {
 			_debug('A client connected.');
 			Homey.manager('flow').trigger('client_online', null, null, (err, result) => {
-				if( err ) return Homey.error(err);
+				if (err) return Homey.error(err);
 			});
 		}
 		if (getOnlineDevices() > getOnlineClients()) {
 			_debug('A client disconnected.');
 			Homey.manager('flow').trigger('client_offline', null, null, (err, result) => {
-				if( err ) return Homey.error(err);
+				if (err) return Homey.error(err);
 			});
 		}
 	}
