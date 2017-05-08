@@ -2,8 +2,9 @@
 	"id": "com.ubnt.ssh",
 	"name": {
 		"en": "Ubiquiti UniFi"
+		"es": "Ubiquiti UniFi"
 	},
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"compatibility": ">=1.0.0",
 	"author": {
 		"name": "Carlo Landmeter",
@@ -17,6 +18,7 @@
 			"type": "boolean",
 			"title": {
 				"en": "Connected"
+				"es": "Conectado"
 			},
 			"getable": true,
 			"setable": false
@@ -24,7 +26,8 @@
 		"measure_signal": {
 			"type": "number",
 			"title": {
-				"en": "Signal"
+				"en": "Signal",
+				"es": "Señal"
 			},
 			"units": {
 				"en": "%"
@@ -38,10 +41,12 @@
 		"measure_rssi": {
 			"type": "number",
 			"title": {
-				"en": "RSSI"
+				"en": "RSSI",
+				"es": "RSSI"
 			},
 			"units": {
-				"en": "dBm"
+				"en": "dBm",
+				"es": "dBm"
 			},
 			"getable": true,
 			"setable": false,
@@ -55,6 +60,7 @@
 			"id": "ssh-client",
 			"name": {
 				"en": "Ubiquiti SSH device"
+				"es": "Dispositivos SSH Ubiquiti"
 			},
 			"class": "sensor",
 			"capabilities": [ "client_connected", "measure_signal",  "measure_rssi" ],
@@ -101,7 +107,8 @@
 				"id": "client_connected",
 				"title": {
 					"en": "Client connected",
-					"nl": "Client Verbonden"
+					"nl": "Client Verbonden",
+					"es": "Cliente Conectado"
 				},
 				"args": [
 					{
@@ -116,7 +123,8 @@
 						"type": "number",
 						"title": {
 							"en": "dBm",
-							"nl": "dBm"
+							"nl": "dBm",
+							"es": "dBm"
 						},
 						"example": -75
 					},
@@ -125,7 +133,8 @@
 						"type": "number",
 						"title": {
 							"en": "%",
-							"nl": "%"
+							"nl": "%",
+							"es": "%"
 						},
 						"example": 75
 					}
@@ -135,7 +144,8 @@
 				"id": "client_disconnected",
 				"title": {
 					"en": "Client disconnected",
-					"nl": "Client verbroken"
+					"nl": "Client verbroken",
+					"es": "Cliente Desconectado"
 				},
 				"args": [
 					{
@@ -148,25 +158,29 @@
 			{
 				"id": "first_online",
 				"title": {
-					"en": "First client connected"
+					"en": "First client connected",
+					"es": "Primer Cliente Connectado"
 				}
 			},
 			{
 				"id": "last_offline",
 				"title": {
-					"en": "Last client disconnected"
+					"en": "Last client disconnected",
+					"es": "Último Cliente Conectado"
 				}
 			},
 			{
 				"id": "client_online",
 				"title": {
-					"en": "A client connected"
+					"en": "A client connected",
+					"es": "Un cliente conectado"
 				}
 			},
 			{
 				"id": "client_offline",
 				"title": {
 					"en": "A client disconnected"
+					"es": "Un cliente desconectado"
 				}
 			}
 		]
