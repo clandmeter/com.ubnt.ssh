@@ -26,6 +26,11 @@ Homey will query your UniFi® device and provide you a list with currently conne
 * This app only supports a single device because having more then one AP means more reason to install the controller software. Of course PR's are always welcome.
 * You are only able to add devices/clients which are currently connected to your UniFi® device.
 
+## Languages
+
+* English.
+* Spanish.
+
 ## Debug
 
 Debugging can be enabled by creating a file or directory named debug in the root of this application.
